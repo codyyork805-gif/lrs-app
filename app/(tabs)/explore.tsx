@@ -1,64 +1,68 @@
-import { Platform, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
 
-import { ExternalLink } from '@/components/external-link';
 import ParallaxScrollView from '@/components/parallax-scroll-view';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Collapsible } from '@/components/ui/collapsible';
-import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Fonts } from '@/constants/theme';
 
-export default function TabTwoScreen() {
+export default function ExploreScreen() {
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#D0D0D0', dark: '#353636' }}
-      headerImage={
-        <IconSymbol
-          size={310}
-          color="#808080"
-          name="chevron.left.forwardslash.chevron.right"
-          style={styles.headerImage}
-        />
-      }
-    >
-      <ThemedView style={styles.titleContainer}>
+    <ParallaxScrollView headerBackgroundColor={{ light: '#0B0D0F', dark: '#0B0D0F' }}>
+      <ThemedView style={styles.container}>
         <ThemedText type="title" style={{ fontFamily: Fonts.rounded }}>
           Explore
         </ThemedText>
-      </ThemedView>
 
-      <ThemedText>This screen is intentionally minimal.</ThemedText>
-
-      <Collapsible title="Links">
-        <ExternalLink href="https://docs.expo.dev/router/introduction">
-          <ThemedText type="link">Expo Router docs</ThemedText>
-        </ExternalLink>
-
-        <ExternalLink href="https://reactnative.dev/docs/images">
-          <ThemedText type="link">React Native images docs</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-
-      <Collapsible title="Platform note">
-        <ThemedText>
-          {Platform.OS === 'ios'
-            ? 'iOS is supported.'
-            : 'Android and web are supported.'}
+        <ThemedText style={styles.spacer}>
+          LRS helps you find calm, locals-first restaurant picks near you.
         </ThemedText>
-      </Collapsible>
+
+        <ThemedView style={styles.card}>
+          <ThemedText type="defaultSemiBold">How it works</ThemedText>
+          <ThemedText style={styles.smallSpacer}>
+            Pick a mode, then search. We prefer independent places with real local love.
+          </ThemedText>
+        </ThemedView>
+
+        <ThemedView style={styles.card}>
+          <ThemedText type="defaultSemiBold">Modes</ThemedText>
+          <ThemedText style={styles.smallSpacer}>
+            Top Local Picks: closest and strict.{"\n"}
+            Best Available: wider net.{"\n"}
+            Hype: farther is allowed when it’s worth it.
+          </ThemedText>
+        </ThemedView>
+
+        <ThemedView style={styles.card}>
+          <ThemedText type="defaultSemiBold">Note</ThemedText>
+          <ThemedText style={styles.smallSpacer}>
+            Results can vary based on location accuracy and available place data.
+          </ThemedText>
+        </ThemedView>
+      </ThemedView>
     </ParallaxScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  headerImage: {
-    color: '#808080',
-    bottom: -90,
-    left: -35,
-    position: 'absolute',
+  container: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 24,
   },
-  titleContainer: {
-    flexDirection: 'row',
-    gap: 8,
+  spacer: {
+    marginTop: 10,
+    marginBottom: 14,
+  },
+  smallSpacer: {
+    marginTop: 8,
+  },
+  card: {
+    marginTop: 12,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
   },
 });
