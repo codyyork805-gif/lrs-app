@@ -2,7 +2,7 @@
   "expo": {
     "name": "lrs-app",
     "slug": "lrs-app",
-    "version": "1.0.1",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "lrsapp",
@@ -12,7 +12,8 @@
       "supportsTablet": true
     },
     "android": {
-      "package": "com.goreflinger.lrsapp"
+      "package": "com.goreflinger.lrsapp",
+      "versionCode": 3
     },
     "web": {
       "output": "static",
