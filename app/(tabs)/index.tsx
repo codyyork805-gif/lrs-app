@@ -102,6 +102,13 @@ function locationGuardrailNote(userLocation: string, picks: any[]): string | nul
   return null;
 }
 
+function maxMilesForMode(mode: "strict" | "best" | "hype"): number {
+  // LOCKED CAPS (final safety net)
+  if (mode === "strict") return 10;
+  if (mode === "best") return 15;
+  return 25; // hype
+}
+
 export default function LRSHome() {
   const [location, setLocation] = useState("Arroyo Grande, CA");
   const [cuisine, setCuisine] = useState("tacos");
@@ -116,16 +123,8 @@ export default function LRSHome() {
   // ✅ New: lets us show a calm empty-state only after a search
   const [hasSearched, setHasSearched] = useState(false);
 
-  const cuisinePresets = [
-    "tacos",
-    "ramen",
-    "bbq",
-    "breakfast",
-    "sushi",
-    "thai",
-    "pizza",
-    "burgers",
-  ];
+  // ✅ Calm, trustworthy starter set (8)
+  const cuisinePresets = ["tacos", "pizza", "sushi", "ramen", "burgers", "bbq", "breakfast", "thai"];
 
   function friendlyModeName(m: string) {
     if (m === "strict") return "Top Local Picks";
@@ -142,7 +141,7 @@ export default function LRSHome() {
 
   async function runLRS() {
     try {
-      setHasSearched(true); // ✅ mark that we ran at least one search
+      setHasSearched(true);
       setLoading(true);
       setNote("");
       setDebugLine("");
@@ -162,22 +161,41 @@ export default function LRSHome() {
         return;
       }
 
-      const picks = data.picks || [];
-      setResults(picks);
+      const picksRaw = data.picks || [];
+
+      // FRONTEND TRUST HARDENING (DISTANCE):
+      // Refuse to display anything beyond the locked cap for the chosen mode.
+      const cap = maxMilesForMode(mode);
+      const picksWithinCap = picksRaw.filter((p: any) => {
+        const d = p?.distance_miles;
+        if (typeof d !== "number") return true; // if missing, don't drop silently (backend should provide it)
+        return d <= cap;
+      });
+
+      const dropped = picksRaw.length - picksWithinCap.length;
+
+      setResults(picksWithinCap);
 
       // Primary note from backend (small towns, widened net, etc.)
       const backendNote = data.limitation_note ? String(data.limitation_note) : "";
 
       // Guardrail note when user included a country but results appear in a different country
-      const guardrail = locationGuardrailNote(location, picks) || "";
+      const guardrail = locationGuardrailNote(location, picksWithinCap) || "";
 
-      // Combine notes safely (if both exist, show both)
-      const combined = [backendNote, guardrail].filter(Boolean).join("\n\n");
+      // If we dropped results for being too far, say so calmly (trust preserving)
+      const distanceNote =
+        dropped > 0
+          ? `Heads up: I hid ${dropped} result${dropped === 1 ? "" : "s"} that were beyond ${cap} miles for ${friendlyModeName(
+              mode
+            )}.`
+          : "";
+
+      const combined = [backendNote, distanceNote, guardrail].filter(Boolean).join("\n\n");
       if (combined) setNote(combined);
 
       if (data.debug) {
         setDebugLine(
-          `You’re in ${friendlyModeName(data.debug.mode)} mode. I’m showing ${data.debug.final_count} picks.`
+          `You’re in ${friendlyModeName(data.debug.mode)} mode. I’m showing ${picksWithinCap.length} picks.`
         );
       }
     } catch {
@@ -260,16 +278,12 @@ export default function LRSHome() {
         ))}
       </View>
 
-      <Pressable
-        onPress={runLRS}
-        style={{ backgroundColor: THEME.button, padding: 14, borderRadius: 12 }}
-      >
+      <Pressable onPress={runLRS} style={{ backgroundColor: THEME.button, padding: 14, borderRadius: 12 }}>
         <Text style={{ color: THEME.buttonText, fontWeight: "900", textAlign: "center" }}>
           {loading ? "Finding local favorites…" : "Find Local Favorites"}
         </Text>
       </Pressable>
 
-      {/* ✅ New: calm loading helper (only while loading) */}
       {loading && (
         <Text style={{ color: THEME.muted, marginTop: 10 }}>
           Filtering out chains and weak picks… this can take a few seconds.
@@ -300,7 +314,6 @@ export default function LRSHome() {
 
       {debugLine && <Text style={{ color: THEME.muted, marginVertical: 12 }}>{debugLine}</Text>}
 
-      {/* Item #2: limitation_note (and guardrails) as a calm info card */}
       {note && (
         <View
           style={{
@@ -312,14 +325,11 @@ export default function LRSHome() {
             marginBottom: 12,
           }}
         >
-          <Text style={{ color: THEME.text, fontWeight: "900", marginBottom: 6 }}>
-            ℹ️ Heads up
-          </Text>
+          <Text style={{ color: THEME.text, fontWeight: "900", marginBottom: 6 }}>ℹ️ Heads up</Text>
           <Text style={{ color: THEME.muted }}>{note}</Text>
         </View>
       )}
 
-      {/* ✅ New: empty state (only after a search, only if no other note exists) */}
       {showEmptyState && (
         <View
           style={{
@@ -355,14 +365,18 @@ export default function LRSHome() {
           <Text style={{ color: THEME.text, fontWeight: "900", fontSize: 18 }}>{r.name}</Text>
           <Text style={{ color: THEME.muted, marginTop: 4 }}>{r.location}</Text>
 
+          {typeof r.distance_miles === "number" && (
+            <Text style={{ marginTop: 8, color: THEME.muted }}>
+              Distance: {r.distance_miles} mi
+            </Text>
+          )}
+
           <Text style={{ marginTop: 10, color: THEME.text }}>
             ⭐ {r.rating} ({r.reviews}) • Local trust: {r.confidence}
           </Text>
 
           {r.also_in_strict && (
-            <Text style={{ marginTop: 6, color: THEME.muted }}>
-              Also shows up in Top Local Picks.
-            </Text>
+            <Text style={{ marginTop: 6, color: THEME.muted }}>Also shows up in Top Local Picks.</Text>
           )}
 
           {r.why && <Text style={{ marginTop: 10, color: THEME.text }}>{r.why}</Text>}
@@ -372,15 +386,11 @@ export default function LRSHome() {
           )}
 
           {mode === "hype" && r.hype_reason && (
-            <Text style={{ marginTop: 10, color: THEME.text }}>
-              🔥 Hype reason: {r.hype_reason}
-            </Text>
+            <Text style={{ marginTop: 10, color: THEME.text }}>🔥 Hype reason: {r.hype_reason}</Text>
           )}
 
           {r.order && (
-            <Text style={{ marginTop: 10, color: THEME.muted, fontStyle: "italic" }}>
-              {r.order}
-            </Text>
+            <Text style={{ marginTop: 10, color: THEME.muted, fontStyle: "italic" }}>{r.order}</Text>
           )}
 
           <View style={{ flexDirection: "row", gap: 14, marginTop: 12, flexWrap: "wrap" }}>
