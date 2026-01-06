@@ -2,7 +2,7 @@
   "expo": {
     "name": "lrs-app",
     "slug": "lrs-app",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "lrsapp",
@@ -13,7 +13,7 @@
     },
     "android": {
       "package": "com.goreflinger.lrsapp",
-      "versionCode": 3
+      "versionCode": 4
     },
     "web": {
       "output": "static",
