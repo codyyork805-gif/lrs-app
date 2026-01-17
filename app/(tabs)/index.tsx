@@ -1,6 +1,6 @@
 import * as WebBrowser from "expo-web-browser";
-import React, { useState } from "react";
-import { Pressable, ScrollView, Share, Text, TextInput, View } from "react-native";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Image, Modal, Pressable, ScrollView, Share, Text, TextInput, View } from "react-native";
 
 const API_BASE = "https://lrs-backend-production.up.railway.app";
 
@@ -15,6 +15,24 @@ const THEME = {
   button: "#23C4D9",
   buttonText: "#0B0D0F",
   link: "#6EE7FF",
+};
+
+// ✅ Google/Yelp-ish “lift”: cross-platform shadow preset
+const CARD_SHADOW = {
+  shadowColor: "#000",
+  shadowOpacity: 0.28,
+  shadowRadius: 10,
+  shadowOffset: { width: 0, height: 6 },
+  elevation: 6, // Android
+};
+
+// ✅ Softer shadow for images (still visible on dark UI)
+const PHOTO_SHADOW = {
+  shadowColor: "#000",
+  shadowOpacity: 0.35,
+  shadowRadius: 8,
+  shadowOffset: { width: 0, height: 5 },
+  elevation: 5, // Android
 };
 
 function Divider() {
@@ -109,9 +127,13 @@ function maxMilesForMode(mode: "strict" | "best" | "hype"): number {
   return 25; // hype
 }
 
+type Suggestion = { label: string; name: string; address: string };
+
 export default function LRSHome() {
-  const [location, setLocation] = useState("Arroyo Grande, CA");
-  const [cuisine, setCuisine] = useState("tacos");
+  // ✅ Starts empty (locked UX decision)
+  const [location, setLocation] = useState("");
+  // ✅ Starts empty (requested)
+  const [cuisine, setCuisine] = useState("");
   const [mode, setMode] = useState<"strict" | "best" | "hype">("strict");
 
   const [results, setResults] = useState<any[]>([]);
@@ -123,8 +145,131 @@ export default function LRSHome() {
   // ✅ New: lets us show a calm empty-state only after a search
   const [hasSearched, setHasSearched] = useState(false);
 
-  // ✅ Calm, trustworthy starter set (8)
-  const cuisinePresets = ["tacos", "pizza", "sushi", "ramen", "burgers", "bbq", "breakfast", "thai"];
+  // ✅ Tap photo → full-screen viewer (Google/Yelp-style)
+  const [photoModalOpen, setPhotoModalOpen] = useState(false);
+  const [activePhotoUrl, setActivePhotoUrl] = useState<string | null>(null);
+
+  function openPhoto(url: string) {
+    setActivePhotoUrl(url);
+    setPhotoModalOpen(true);
+  }
+
+  function closePhoto() {
+    setPhotoModalOpen(false);
+    setActivePhotoUrl(null);
+  }
+
+  // ✅ LOCKED 12 “Smart Presets” (stable, clean layout)
+  const cuisinePresets = [
+    "tacos",
+    "pizza",
+    "sushi",
+    "ramen",
+    "burgers",
+    "bbq",
+    "breakfast",
+    "thai",
+    "pho",
+    "coffee",
+    "diner",
+    "birria",
+  ];
+
+  // ----------------------------
+  // ✅ Location dropdown (suggest)
+  // ----------------------------
+  const [locFocused, setLocFocused] = useState(false);
+  const [locSuggestions, setLocSuggestions] = useState<Suggestion[]>([]);
+  const [locLoading, setLocLoading] = useState(false);
+  const lastSuggestQueryRef = useRef<string>("");
+
+  const shouldShowDropdown = useMemo(() => {
+    const q = (location || "").trim();
+    return locFocused && q.length >= 3 && locSuggestions.length > 0;
+  }, [locFocused, location, locSuggestions]);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function run() {
+      const q = (location || "").trim();
+
+      // Only show when clearly helpful
+      if (!locFocused || q.length < 3) {
+        setLocSuggestions([]);
+        setLocLoading(false);
+        return;
+      }
+
+      // Debounce a bit
+      setLocLoading(true);
+      const myQuery = q.toLowerCase();
+      lastSuggestQueryRef.current = myQuery;
+
+      await new Promise((r) => setTimeout(r, 250));
+
+      // If user typed more while waiting, cancel this run
+      if (lastSuggestQueryRef.current !== myQuery) {
+        if (alive) setLocLoading(false);
+        return;
+      }
+
+      try {
+        const url = `${API_BASE}/suggest?q=${encodeURIComponent(q)}`;
+        const res = await fetch(url);
+        const data = await res.json();
+
+        const raw: any[] = Array.isArray(data?.suggestions) ? data.suggestions : [];
+        const cleaned: Suggestion[] = raw
+          .map((s: any) => ({
+            label: String(s?.label || "").trim(),
+            name: String(s?.name || "").trim(),
+            address: String(s?.address || "").trim(),
+          }))
+          .filter((s) => !!s.label);
+
+        if (!alive) return;
+
+        function looksCityLike(label: string) {
+          const t = label.toLowerCase();
+          const hasStreetNumber = /^\d+\s/.test(t);
+          const hasSuite = t.includes(" ste ") || t.includes(" suite ") || t.includes("#");
+          const hasComma = t.includes(",");
+          return hasComma && !hasStreetNumber && !hasSuite;
+        }
+
+        const cityLike = cleaned.filter((s) => looksCityLike(s.label));
+
+        // Only return city-like by default (your rule).
+        // If there are zero city-like, show nothing (better than random businesses).
+        const finalList = cityLike.slice(0, 6);
+
+        setLocSuggestions(finalList);
+      } catch {
+        if (!alive) return;
+        setLocSuggestions([]);
+      } finally {
+        if (alive) setLocLoading(false);
+      }
+    }
+
+    run();
+    return () => {
+      alive = false;
+    };
+  }, [location, locFocused]);
+
+  function selectSuggestion(s: Suggestion) {
+    // Must use exactly what the user selected (no surprises)
+    setLocation(s.label);
+    setLocSuggestions([]);
+    setLocFocused(false);
+  }
+
+  function hideDropdown() {
+    setLocSuggestions([]);
+    setLocFocused(false);
+  }
 
   function friendlyModeName(m: string) {
     if (m === "strict") return "Top Local Picks";
@@ -141,6 +286,25 @@ export default function LRSHome() {
 
   async function runLRS() {
     try {
+      const loc = (location || "").trim();
+      const food = (cuisine || "").trim();
+
+      // ✅ Existing location guardrail (already working)
+      if (!loc) {
+        setHasSearched(true);
+        setLoading(false);
+        setResults([]);
+        setDebugLine("");
+        setShowWhy(false);
+
+        // Hide dropdown (no surprises)
+        setLocSuggestions([]);
+        setLocFocused(false);
+
+        setNote("Please type a city or area first (example: “Los Angeles, CA”).");
+        return;
+      }
+
       setHasSearched(true);
       setLoading(true);
       setNote("");
@@ -148,9 +312,14 @@ export default function LRSHome() {
       setResults([]);
       setShowWhy(false);
 
+      // Hide dropdown when searching (your rule)
+      setLocSuggestions([]);
+      setLocFocused(false);
+
       const params = new URLSearchParams();
-      params.append("location", location);
-      if (cuisine.trim()) params.append("cuisine", cuisine.trim());
+      // Must use EXACTLY what is in the box
+      params.append("location", loc);
+      if (food) params.append("cuisine", food);
       params.append("mode", mode);
 
       const res = await fetch(`${API_BASE}/lrs?${params.toString()}`);
@@ -168,7 +337,7 @@ export default function LRSHome() {
       const cap = maxMilesForMode(mode);
       const picksWithinCap = picksRaw.filter((p: any) => {
         const d = p?.distance_miles;
-        if (typeof d !== "number") return true; // if missing, don't drop silently (backend should provide it)
+        if (typeof d !== "number") return true; // if missing, don't drop silently
         return d <= cap;
       });
 
@@ -176,13 +345,9 @@ export default function LRSHome() {
 
       setResults(picksWithinCap);
 
-      // Primary note from backend (small towns, widened net, etc.)
       const backendNote = data.limitation_note ? String(data.limitation_note) : "";
+      const guardrail = locationGuardrailNote(loc, picksWithinCap) || "";
 
-      // Guardrail note when user included a country but results appear in a different country
-      const guardrail = locationGuardrailNote(location, picksWithinCap) || "";
-
-      // If we dropped results for being too far, say so calmly (trust preserving)
       const distanceNote =
         dropped > 0
           ? `Heads up: I hid ${dropped} result${dropped === 1 ? "" : "s"} that were beyond ${cap} miles for ${friendlyModeName(
@@ -217,7 +382,70 @@ export default function LRSHome() {
   const showEmptyState = hasSearched && !loading && results.length === 0 && !note;
 
   return (
-    <ScrollView style={{ padding: 16, paddingTop: 32, backgroundColor: THEME.bg }}>
+    <ScrollView
+      style={{ padding: 16, paddingTop: 32, backgroundColor: THEME.bg }}
+      keyboardShouldPersistTaps="handled"
+      onScrollBeginDrag={() => {
+        if (locFocused || locSuggestions.length > 0) hideDropdown();
+      }}
+      onScroll={() => {
+        if (locFocused || locSuggestions.length > 0) hideDropdown();
+      }}
+      scrollEventThrottle={16}
+    >
+      {/* ✅ Full-screen photo viewer (Google/Yelp-style tap) */}
+      <Modal visible={photoModalOpen} transparent animationType="fade" onRequestClose={closePhoto}>
+        <Pressable
+          onPress={closePhoto}
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.92)",
+            justifyContent: "center",
+            padding: 16,
+          }}
+        >
+          {/* Stop tap-through when tapping the image itself */}
+          <Pressable onPress={() => {}} style={{ width: "100%" }}>
+            {activePhotoUrl ? (
+              <Image
+                source={{ uri: activePhotoUrl }}
+                style={{
+                  width: "100%",
+                  height: 360,
+                  borderRadius: 14,
+                  backgroundColor: THEME.inputBg,
+                }}
+                resizeMode="contain"
+              />
+            ) : null}
+
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                marginTop: 12,
+                alignItems: "center",
+              }}
+            >
+              <Text style={{ color: THEME.muted, fontSize: 12 }}>Tap outside to close</Text>
+              <Pressable
+                onPress={closePhoto}
+                style={{
+                  paddingVertical: 8,
+                  paddingHorizontal: 12,
+                  borderRadius: 999,
+                  borderWidth: 1,
+                  borderColor: THEME.border,
+                  backgroundColor: THEME.card,
+                }}
+              >
+                <Text style={{ color: THEME.text, fontWeight: "900" }}>✕ Close</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       <Text style={{ fontSize: 30, fontWeight: "900", color: THEME.text }}>
         Local Restaurant Scout
       </Text>
@@ -235,7 +463,11 @@ export default function LRSHome() {
       <TextInput
         value={location}
         onChangeText={setLocation}
-        placeholder="e.g. Arroyo Grande, CA"
+        onFocus={() => setLocFocused(true)}
+        onBlur={() => {
+          setTimeout(() => setLocFocused(false), 120);
+        }}
+        placeholder="e.g. Los Angeles, CA"
         placeholderTextColor={THEME.muted}
         style={{
           borderWidth: 1,
@@ -245,9 +477,44 @@ export default function LRSHome() {
           padding: 12,
           borderRadius: 12,
           marginTop: 8,
-          marginBottom: 10,
+          marginBottom: 6,
         }}
       />
+
+      {locFocused && (location || "").trim().length >= 3 && locLoading && (
+        <Text style={{ color: THEME.muted, marginBottom: 8 }}>Finding locations…</Text>
+      )}
+
+      {shouldShowDropdown && (
+        <View
+          style={{
+            backgroundColor: THEME.card,
+            borderColor: THEME.border,
+            borderWidth: 1,
+            borderRadius: 12,
+            overflow: "hidden",
+            marginBottom: 10,
+          }}
+        >
+          {locSuggestions.map((s, idx) => (
+            <Pressable
+              key={`${s.label}-${idx}`}
+              onPress={() => selectSuggestion(s)}
+              style={{
+                padding: 12,
+                borderBottomWidth: idx === locSuggestions.length - 1 ? 0 : 1,
+                borderBottomColor: THEME.border,
+              }}
+            >
+              <Text style={{ color: THEME.text, fontWeight: "800" }}>{s.label}</Text>
+            </Pressable>
+          ))}
+
+          <Pressable onPress={hideDropdown} style={{ padding: 12 }}>
+            <Text style={{ color: THEME.muted }}>Hide</Text>
+          </Pressable>
+        </View>
+      )}
 
       <Text style={{ color: THEME.text, fontWeight: "800" }}>What are you craving?</Text>
       <TextInput
@@ -269,16 +536,14 @@ export default function LRSHome() {
 
       <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 10 }}>
         {cuisinePresets.map((c) => (
-          <Chip
-            key={c}
-            label={c}
-            active={cuisine.toLowerCase() === c}
-            onPress={() => setCuisine(c)}
-          />
+          <Chip key={c} label={c} active={cuisine.toLowerCase() === c} onPress={() => setCuisine(c)} />
         ))}
       </View>
 
-      <Pressable onPress={runLRS} style={{ backgroundColor: THEME.button, padding: 14, borderRadius: 12 }}>
+      <Pressable
+        onPress={runLRS}
+        style={{ backgroundColor: THEME.button, padding: 14, borderRadius: 12 }}
+      >
         <Text style={{ color: THEME.buttonText, fontWeight: "900", textAlign: "center" }}>
           {loading ? "Finding local favorites…" : "Find Local Favorites"}
         </Text>
@@ -360,15 +625,47 @@ export default function LRSHome() {
             borderRadius: 14,
             padding: 12,
             marginBottom: 12,
+            ...CARD_SHADOW, // ✅ Google/Yelp-ish card lift
           }}
         >
+          {/* ✅ Photo (tap to view full screen) */}
+          <View style={{ ...PHOTO_SHADOW, borderRadius: 12, marginBottom: 10 }}>
+            <Pressable
+              disabled={!r.photo_url}
+              onPress={() => {
+                if (r.photo_url) openPhoto(String(r.photo_url));
+              }}
+              style={{
+                width: "100%",
+                height: 160,
+                borderRadius: 12,
+                overflow: "hidden",
+                backgroundColor: THEME.inputBg,
+                borderWidth: 1, // tiny edge like Yelp cards
+                borderColor: THEME.border,
+              }}
+            >
+              {r.photo_url ? (
+                <Image
+                  source={{ uri: r.photo_url }}
+                  style={{ width: "100%", height: "100%" }}
+                  resizeMode="cover"
+                />
+              ) : null}
+            </Pressable>
+          </View>
+
+          {r.photo_url ? (
+            <Text style={{ color: THEME.muted, fontSize: 12, marginBottom: 6 }}>
+              Photo from Google • Tap to view
+            </Text>
+          ) : null}
+
           <Text style={{ color: THEME.text, fontWeight: "900", fontSize: 18 }}>{r.name}</Text>
           <Text style={{ color: THEME.muted, marginTop: 4 }}>{r.location}</Text>
 
           {typeof r.distance_miles === "number" && (
-            <Text style={{ marginTop: 8, color: THEME.muted }}>
-              Distance: {r.distance_miles} mi
-            </Text>
+            <Text style={{ marginTop: 8, color: THEME.muted }}>Distance: {r.distance_miles} mi</Text>
           )}
 
           <Text style={{ marginTop: 10, color: THEME.text }}>
@@ -376,7 +673,9 @@ export default function LRSHome() {
           </Text>
 
           {r.also_in_strict && (
-            <Text style={{ marginTop: 6, color: THEME.muted }}>Also shows up in Top Local Picks.</Text>
+            <Text style={{ marginTop: 6, color: THEME.muted }}>
+              Also shows up in Top Local Picks.
+            </Text>
           )}
 
           {r.why && <Text style={{ marginTop: 10, color: THEME.text }}>{r.why}</Text>}
